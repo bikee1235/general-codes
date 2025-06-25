@@ -1,0 +1,44 @@
+[[FBRoute POST:@"/vpnconnect"].withoutSession respondWithTarget:self action:@selector(handleVPNConnectV2:)],
+
+
++ (id<FBResponsePayload>)handleVPNConnectV2:(FBRouteRequest *)request
+{
+
+  NSDictionary *arguments = request.arguments;
+  NSString *vpnid = arguments[@"vpnid"];
+  NSString *connectstatus = arguments[@"command"];
+
+  if (!vpnid || !connectstatus) {
+    return FBResponseWithUnknownErrorFormat(@"Missing vpnid or command");
+  }
+
+  NSURL *url = [NSURL URLWithString:@"http://127.0.0.1:9090/vpnconnect"];
+  NSMutableURLRequest *postRequest = [NSMutableURLRequest requestWithURL:url];
+  postRequest.HTTPMethod = @"POST";
+  [postRequest setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+
+  NSDictionary *bodyDict = @{ @"vpnid": vpnid, @"command": connectstatus };
+  NSError *jsonError = nil;
+  NSData *bodyData = [NSJSONSerialization dataWithJSONObject:bodyDict options:0 error:&jsonError];
+
+  if (!bodyData) {
+    return FBResponseWithUnknownErrorFormat(@"Failed to serialize JSON body: %@", jsonError.localizedDescription);
+  }
+
+  postRequest.HTTPBody = bodyData;
+
+  NSURLSessionDataTask *task = [[NSURLSession sharedSession]
+      dataTaskWithRequest:postRequest
+        completionHandler:^(NSData * _Nullable data,
+                            NSURLResponse * _Nullable response,
+                            NSError * _Nullable error) {
+    if (error) {
+      NSLog(@"VPN Connect Error: %@", error.localizedDescription);
+    } else {
+      NSLog(@"VPN Connect Success");
+    }
+  }];
+  [task resume];
+
+  return FBResponseWithOK();
+}
