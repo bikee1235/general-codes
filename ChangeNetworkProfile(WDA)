@@ -1,0 +1,117 @@
+[[FBRoute POST:@"/networkLinkConditioner"].withoutSession respondWithTarget:self action:@selector(handleSetNetworkProfile:)],
+
+
++ (id<FBResponsePayload>)handleSetNetworkProfile:(FBRouteRequest *)request {
+  NSString *profile = request.arguments[@"profile"];
+  if (!profile || ![profile isKindOfClass:[NSString class]]) {
+    return FBResponseWithObject(@"Invalid type of profile argument");
+  }
+
+  // Save the current app to restore later
+  NSString *currentAppBundleID = [FBApplication fb_activeApplication].bundleID;
+
+  // Launch Settings
+  NSString *bundleId = @"com.apple.Preferences";
+  FBApplication *app = [[FBApplication alloc] initWithBundleIdentifier:bundleId];
+  [app launch];
+
+  // Navigate to Developer
+  XCUIElement *developerCell = app.tables.cells[@"Developer"];
+  if (![developerCell waitForExistenceWithTimeout:0]) {
+    return FBResponseWithObject(@"Developer menu not found");
+  }
+  [developerCell tap];
+
+  // Navigate to Network Link Conditioner
+  XCUIElement *networkCell = app.tables.cells[@"Network Link Conditioner"];
+  if (![networkCell waitForExistenceWithTimeout:0]) {
+    return FBResponseWithObject(@"Network Link Conditioner not found");
+  }
+  [networkCell tap];
+
+  // Find Enable switch
+  XCUIElement *enableSwitch = app.switches[@"Enable"];
+  if (![enableSwitch waitForExistenceWithTimeout:0]) {
+    return FBResponseWithObject(@"Enable switch not found");
+  }
+
+  // Disable first to ensure fresh start
+  if ([(NSString *)enableSwitch.value isEqualToString:@"1"]) {
+    [enableSwitch tap];
+  }
+
+  // If profile is "5G" and not found, create it
+  if ([profile.lowercaseString isEqualToString:@"5g"]) {
+    XCUIElement *existingProfile = app.tables.cells[@"5G"];
+    if (![existingProfile exists]) {
+      // Tap "Add a profile…"
+      XCUIElement *addProfileCell = app.tables.cells[@"Add a profile…"];
+      if (![addProfileCell waitForExistenceWithTimeout:0]) {
+        return FBResponseWithObject(@"Add a profile… button not found");
+      }
+      [addProfileCell tap];
+
+      // Fill in fields
+      NSDictionary<NSString *, NSString *> *fieldData = @{
+        @"Name": @"5G",
+        @"In Bandwidth": @"500000",
+        @"In Delay": @"30",
+        @"Out Bandwidth": @"500000",
+        @"Out Delay": @"30",
+        @"DNS Delay": @"10"
+      };
+
+      for (NSString *placeholder in fieldData) {
+        XCUIElement *field = app.textFields[placeholder];
+        if (![field waitForExistenceWithTimeout:0]) {
+          return FBResponseWithObject([NSString stringWithFormat:@"Field '%@' not found", placeholder]);
+        }
+
+        @try {
+          [field setValue:fieldData[placeholder] forKey:@"value"];
+        } @catch (NSException *exception) {
+          [field tap];
+          [field typeText:fieldData[placeholder]];
+        }
+      }
+
+      // Tap Save
+      XCUIElement *saveButton = app.navigationBars.buttons[@"Save"];
+      if (![saveButton waitForExistenceWithTimeout:0]) {
+        return FBResponseWithObject(@"Save button not found");
+      }
+      [saveButton tap];
+    }
+
+    // Select the 5G profile
+    XCUIElement *profileCell = app.tables.cells[@"5G"];
+    if (![profileCell waitForExistenceWithTimeout:0]) {
+      return FBResponseWithObject(@"5G profile not found after creation");
+    }
+    [profileCell tap];
+  } else {
+    // Select existing profile
+    XCUIElement *profileCell = app.tables.cells[profile];
+    if (![profileCell waitForExistenceWithTimeout:0]) {
+      return FBResponseWithObject([NSString stringWithFormat:@"Profile '%@' not found", profile]);
+    }
+    [profileCell tap];
+  }
+
+  // Re-enable NLC
+  if ([(NSString *)enableSwitch.value isEqualToString:@"0"]) {
+    [enableSwitch tap];
+  }
+
+  // Ensure app is foregrounded before terminating
+  [NSThread sleepForTimeInterval:1.0];
+  [app terminate];
+
+  // Reactivate previously used app
+  if (currentAppBundleID && ![currentAppBundleID isEqualToString:@"com.apple.Preferences"]) {
+    FBApplication *previousApp = [[FBApplication alloc] initWithBundleIdentifier:currentAppBundleID];
+    [previousApp activate];
+  }
+
+  return FBResponseWithOK();
+}
