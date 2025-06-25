@@ -1,0 +1,30 @@
+[[FBRoute POST:@"/checkInternet"].withoutSession respondWithTarget:self action:@selector(handleCheckInternetConnection:)],
+
+
++ (id<FBResponsePayload>)handleCheckInternetConnection:(FBRouteRequest *)request {
+  NSString *urlString = request.arguments[@"url"];
+  if (![urlString isKindOfClass:[NSString class]] || urlString.length == 0) {
+    return FBResponseWithObject(@{@"error": @"Missing or invalid 'url' parameter"});
+  }
+
+  __block NSString *status = @"unreachable";
+  dispatch_semaphore_t sema = dispatch_semaphore_create(0);
+
+  NSURL *url = [NSURL URLWithString:urlString];
+  if (!url || !url.scheme || !url.host) {
+    return FBResponseWithObject(@{@"error": @"Invalid URL format"});
+  }
+
+  NSURLSession *session = [NSURLSession sharedSession];
+  NSURLSessionDataTask *task = [session dataTaskWithURL:url
+                                      completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+    if (error == nil && [(NSHTTPURLResponse *)response statusCode] == 200) {
+      status = @"reachable";
+    }
+    dispatch_semaphore_signal(sema);
+  }];
+  [task resume];
+  dispatch_semaphore_wait(sema, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)));
+
+  return FBResponseWithObject(@{@"internet": status, @"url": urlString});
+}
